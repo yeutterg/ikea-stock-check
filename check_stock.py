@@ -14,6 +14,9 @@ availability_base_url = 'https://www.ikea.com/' + country_code + '/' + language_
 product_base_url = 'https://www.ikea.com/' + country_code + '/' + language_code + '/catalog/products/' 
 product_url_suffix = '?version=v1&type=xml&dataset=normal,prices,parentCategories,allImages,attributes'
 
+product_info = []
+product_availability = []
+
 '''
 Reads the input CSV file
 
@@ -52,6 +55,13 @@ Returns: A dict with the product info
     e.g. {'item_id':'01234567', 'price':229.0, 'color':'white', 'description':'EXAMPLE product', 'size':'1x1 "'}
 '''
 def get_product_info(item_id):
+    global product_info
+
+    # If we already got info for this product, return it
+    for prod in product_info:
+        if prod['item_id'] == item_id:
+            return prod
+
     url = product_base_url + item_id + product_url_suffix
     data = urllib.request.urlopen(url).read()
     data = xml.parse(data)
@@ -73,7 +83,10 @@ def get_product_info(item_id):
         # size
         item_info['size'] = item['attributesItems']['attributeItem'][1]['value']
 
-        print('Got product', item_info['item_id'], item_info['description'])
+        print('Product', item_info['item_id'], item_info['description'])
+
+        # Save for later
+        product_info.append(item_info)
 
         return item_info
     except KeyError as e:
@@ -98,6 +111,13 @@ Input:
 Returns: a list of dictionaries containing item availability
 '''
 def get_product_availability(item_id):
+    global product_availability
+
+    # If we already got info for this product, return it
+    for prod in product_availability:
+        if prod[0]['item_id'] == item_id:
+            return prod
+
     url = availability_base_url + item_id
     data = urllib.request.urlopen(url).read()
     data = xml.parse(data)
@@ -139,23 +159,37 @@ def get_product_availability(item_id):
 
                 out.append(store_dict)
 
-                # color in-stock confidence
-                if store_dict['probability'] == 'HIGH':
-                    confcolor = 'green'
-                elif store_dict['probability'] == 'MEDIUM':
-                    confcolor = 'yellow'
-                else:
-                    confcolor = 'red'
-
                 # print the status to the terminal
+                confcolor = color_confidence(store_dict['probability'])
                 print('At store:', store_dict['store_id'], 'Qty:', colored(store_dict['available'], confcolor), 'In-Stock Confidence:', colored(store_dict['probability'], confcolor))
                 if store_dict['available'] == 0:
                     print('Restock date:', store_dict['restockDate'])
                     print('Forecast:')
                     for f in store_dict['forecast']:
-                        print(f['validDate'] + ': ' + f['availableStock'])
+                        confcolor = color_confidence(f['inStockProbabilityCode'])
+                        print(f['validDate'], 'Qty:', colored(f['availableStock'], confcolor), 'Confidence:', colored(f['inStockProbabilityCode'])) 
+
+    # Save for later
+    product_availability.append(out)
 
     return out
+
+
+'''
+Assigns Green/Yellow/Red colors to in-stock probability values
+
+Input: The in-stock probability
+
+Returns: A color for use by the colored library
+'''
+def color_confidence(probability):
+    if probability == 'HIGH':
+        return 'green'
+    elif probability == 'MEDIUM':
+        return 'yellow'
+    else:
+        return 'red'
+
 
 '''
 Gets an item's location within the store
@@ -256,7 +290,7 @@ Determines the in-stock probability for the entire list by store
 Returns:
     The stock confidence for each store
 '''
-def stock_confidence(products):
+def get_stock_confidence(products):
     confidence = []
     for store in store_ids:
         store_dict = {}
@@ -296,81 +330,82 @@ def save_file(filename, rows):
     print('Saved file', filename)
 
 
-products = load_parse_all_products()
-total_price = calc_total_price(products)
-stock_confidence = stock_confidence(products)
+'''
+Gets product info and availability and exports to CSV files
+'''
+def save_product_availability(products):
+    total_price = calc_total_price(products)
+    stock_confidence = get_stock_confidence(products)
+    # pretty_print(products)
 
-# pretty_print(products)
+    for store in store_ids:
+        rows = []
 
-for store in store_ids:
-    rows = []
+        rows.append(['Store ID:', store])
+        for con in stock_confidence:
+            if con['id'] == store:
+                confidence = con['confidence']
+                break
+        rows.append(['In-Stock Confidence', confidence])
+        rows.append(['Total Price', total_price])
+        rows.append(['\n'])
 
-    rows.append(['Store ID:', store])
-    for con in stock_confidence:
-        if con['id'] == store:
-            confidence = con['confidence']
-            break
-    rows.append(['In-Stock Confidence', confidence])
-    rows.append(['Total Price', total_price])
-    rows.append(['\n'])
+        rows.append(['Part Number', 'Description', 'Location', 'Qty Needed', 'Qty Available', 'In-Stock Confidence', 'Color', 'Size', 'Unit Price', 'Notes'])
 
-    rows.append(['Part Number', 'Description', 'Location', 'Qty Needed', 'Qty Available', 'In-Stock Confidence', 'Color', 'Size', 'Unit Price', 'Notes'])
+        for prod in products:
+            for avail in prod['availability']:
+                if avail['store_id'] == store:
+                    thisrow = []
 
-    for prod in products:
-        for avail in prod['availability']:
-            if avail['store_id'] == store:
-                thisrow = []
-
-                if not avail['isMultiProduct']:
-                    # Not a multi-part product
-                    thisrow.append(prod['id'])
-                    thisrow.append(prod['info']['description'])
-                    thisrow.append(avail['locations'][0]['location'])
-                    thisrow.append(avail['locations'][0]['qty'] * prod['qty_needed'])
-                    thisrow.append(avail['available'])
-                    thisrow.append(avail['probability'])
-                    thisrow.append(prod['info']['color'])
-                    thisrow.append(prod['info']['size'])
-                    thisrow.append(prod['info']['price'])
-                    thisrow.append(prod['notes'])
-                    rows.append(thisrow)
-                else:
-                    # Multi-part product
-                    thisrow.append(prod['id'])
-                    thisrow.append(prod['info']['description'])
-                    thisrow.append('Multi-Part Product. See Below:')
-                    thisrow.append(prod['qty_needed'])
-                    thisrow.append(avail['available'])
-                    thisrow.append(avail['probability'])
-                    thisrow.append(prod['info']['color'])
-                    thisrow.append(prod['info']['size'])
-                    thisrow.append(prod['info']['price'])
-                    thisrow.append(prod['notes'])
-                    rows.append(thisrow)
-
-                    for loc in avail['locations']:
-                        info = get_product_info(loc['partNumber'])
-                        avail = get_product_availability(loc['partNumber'])
-                        for thisstore in avail:
-                            if thisstore['store_id'] == store:
-                                avail = thisstore
-
-                        thisrow = []
-                        thisrow.append(loc['partNumber'])
-                        thisrow.append(info['description'])
-                        thisrow.append(loc['location'])
-                        thisrow.append(prod['qty_needed']*int(loc['qty']))
+                    if not avail['isMultiProduct']:
+                        # Not a multi-part product
+                        thisrow.append(prod['id'])
+                        thisrow.append(prod['info']['description'])
+                        thisrow.append(avail['locations'][0]['location'])
+                        thisrow.append(avail['locations'][0]['qty'] * prod['qty_needed'])
                         thisrow.append(avail['available'])
                         thisrow.append(avail['probability'])
-                        thisrow.append(info['color'])
-                        thisrow.append(info['size'])
-                        thisrow.append(info['price'])
-                        thisrow.append('Part of ' + prod['id'])
+                        thisrow.append(prod['info']['color'])
+                        thisrow.append(prod['info']['size'])
+                        thisrow.append(prod['info']['price'])
+                        thisrow.append(prod['notes'])
+                        rows.append(thisrow)
+                    else:
+                        # Multi-part product
+                        thisrow.append(prod['id'])
+                        thisrow.append(prod['info']['description'])
+                        thisrow.append('Multi-Part Product. See Below:')
+                        thisrow.append(prod['qty_needed'])
+                        thisrow.append(avail['available'])
+                        thisrow.append(avail['probability'])
+                        thisrow.append(prod['info']['color'])
+                        thisrow.append(prod['info']['size'])
+                        thisrow.append(prod['info']['price'])
+                        thisrow.append(prod['notes'])
                         rows.append(thisrow)
 
+                        for loc in avail['locations']:
+                            info = get_product_info(loc['partNumber'])
+                            avail = get_product_availability(loc['partNumber'])
+                            for thisstore in avail:
+                                if thisstore['store_id'] == store:
+                                    avail = thisstore
 
-                
+                            thisrow = []
+                            thisrow.append(loc['partNumber'])
+                            thisrow.append(info['description'])
+                            thisrow.append(loc['location'])
+                            thisrow.append(prod['qty_needed']*int(loc['qty']))
+                            thisrow.append(avail['available'])
+                            thisrow.append(avail['probability'])
+                            thisrow.append(info['color'])
+                            thisrow.append(info['size'])
+                            thisrow.append(info['price'])
+                            thisrow.append('Part of ' + prod['id'])
+                            rows.append(thisrow)
 
-
-    save_file('out_' + str(store) + '.csv', rows)
+        save_file('out_' + str(store) + '.csv', rows)
     print(colored('Done.', 'green'))
+
+products = load_parse_all_products()
+save_product_availability(products)
