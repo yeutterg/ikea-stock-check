@@ -7,6 +7,7 @@ from termcolor import colored
 in_file = './in.csv'
 
 store_ids = [215, 211]
+store_names = []
 country_code = 'us'
 language_code = 'en'
 
@@ -16,6 +17,51 @@ product_url_suffix = '?version=v1&type=xml&dataset=normal,prices,parentCategorie
 
 product_info = []
 product_availability = []
+
+
+'''
+Reads the preferred store codes and country/language codes
+'''
+def load_preferred_stores():
+    # Load the preferred stores file
+    with open('preferred_stores.json') as f:
+        data = json.load(f)
+
+        global store_ids, country_code, language_code
+
+        store_ids = data['stores']
+        country_code = data['country']
+        language_code = data['language']
+
+    # Get the store names
+    with open('stores.json') as f:
+        data = json.load(f)
+
+        global store_names
+
+        for i in store_ids:
+            for d in data:
+                if int(d['buCode']) == i:
+                    store_names.append({'id': i, 'name': d['name']})
+
+    print('Searching at the following store(s):')
+    for n in store_names:
+        print(n['name'] + ' (' + str(n['id']) + ')')
+
+
+'''
+Gets the store name from the store ID
+
+Inputs:
+    store_id int: The store ID
+
+Returns: The store name
+'''
+def get_store_name(store_id):
+    for n in store_names:
+        if n['id'] == store_id:
+            return n['name']
+
 
 '''
 Reads the input CSV file
@@ -83,7 +129,7 @@ def get_product_info(item_id):
         # size
         item_info['size'] = item['attributesItems']['attributeItem'][1]['value']
 
-        print('Product', item_info['item_id'], item_info['description'])
+        print('\nProduct', item_info['item_id'], item_info['description'])
 
         # Save for later
         product_info.append(item_info)
@@ -94,11 +140,11 @@ def get_product_info(item_id):
             error = data['ir:ikea-rest']['products']['error']
             errorcode = error['@code']
             errormsg = error['message']
-            print(colored('Error: ' + errormsg + ', Code: ' + errorcode + ', Item: ' + item_id, 'red'))
+            print(colored('\nError: ' + errormsg + ', Code: ' + errorcode + ', Item: ' + item_id, 'red'))
         except:
-            print(colored('Error: ' + e + ' for product: ' + item_id, 'red'))
+            print(colored('\nError: ' + e + ' for product: ' + item_id, 'red'))
 
-        print(colored('Quitting.', 'red'))
+        print(colored('\nQuitting.', 'red'))
         quit()
 
     
@@ -113,7 +159,7 @@ Returns: a list of dictionaries containing item availability
 def get_product_availability(item_id):
     global product_availability
 
-    # If we already got info for this product, return it
+    # If we already got availability for this product, return it
     for prod in product_availability:
         if prod[0]['item_id'] == item_id:
             return prod
@@ -132,8 +178,11 @@ def get_product_availability(item_id):
                 store_dict = {}
                 stock = store['stock']
 
-                # basic availability info
+                # Store ID and name
                 store_dict['store_id'] = id
+                store_dict['store_name'] = get_store_name(id)
+                
+                # basic availability info
                 store_dict['item_id'] = item_id
                 store_dict['available'] = int(stock['availableStock'])
                 if store_dict['available'] == 0:
@@ -161,7 +210,7 @@ def get_product_availability(item_id):
 
                 # print the status to the terminal
                 confcolor = color_confidence(store_dict['probability'])
-                print('At store:', store_dict['store_id'], 'Qty:', colored(store_dict['available'], confcolor), 'In-Stock Confidence:', colored(store_dict['probability'], confcolor))
+                print('At store:', store_dict['store_name'], 'Qty:', colored(store_dict['available'], confcolor), 'In-Stock Confidence:', colored(store_dict['probability'], confcolor))
                 if store_dict['available'] == 0:
                     print('Restock date:', store_dict['restockDate'])
                     print('Forecast:')
@@ -327,7 +376,7 @@ def save_file(filename, rows):
         wr = csv.writer(myfile, quoting=csv.QUOTE_ALL)
         for row in rows:
             wr.writerow(row)
-    print('Saved file', filename)
+    print('\nSaved file', filename)
 
 
 '''
@@ -341,7 +390,12 @@ def save_product_availability(products):
     for store in store_ids:
         rows = []
 
-        rows.append(['Store ID:', store])
+        total_items = 0
+        meets_qty_reqs = True
+
+        store_name = get_store_name(store)
+        rows.append(['Store', store_name])
+        rows.append(['Store ID', store])
         for con in stock_confidence:
             if con['id'] == store:
                 confidence = con['confidence']
@@ -359,19 +413,35 @@ def save_product_availability(products):
 
                     if not avail['isMultiProduct']:
                         # Not a multi-part product
+                        num_items = avail['locations'][0]['qty'] * prod['qty_needed']
+                        total_items = total_items + num_items
+
+                        notes0 = prod['notes']
+
+                        if prod['qty_needed'] > avail['locations'][0]['qty']:
+                            meets_qty_reqs = False
+                            notes0 = 'NOT ENOUGH QTY! ' + prod['notes']
+
                         thisrow.append(prod['id'])
                         thisrow.append(prod['info']['description'])
                         thisrow.append(avail['locations'][0]['location'])
-                        thisrow.append(avail['locations'][0]['qty'] * prod['qty_needed'])
+                        thisrow.append(num_items)
                         thisrow.append(avail['available'])
                         thisrow.append(avail['probability'])
                         thisrow.append(prod['info']['color'])
                         thisrow.append(prod['info']['size'])
                         thisrow.append(prod['info']['price'])
-                        thisrow.append(prod['notes'])
+                        thisrow.append(notes0)
                         rows.append(thisrow)
                     else:
                         # Multi-part product
+
+                        notes1 = prod['notes']
+
+                        if prod['qty_needed'] > avail['available']:
+                            meets_qty_reqs = False
+                            notes1 = 'NOT ENOUGH QTY! ' + prod['notes']
+
                         thisrow.append(prod['id'])
                         thisrow.append(prod['info']['description'])
                         thisrow.append('Multi-Part Product. See Below:')
@@ -381,31 +451,44 @@ def save_product_availability(products):
                         thisrow.append(prod['info']['color'])
                         thisrow.append(prod['info']['size'])
                         thisrow.append(prod['info']['price'])
-                        thisrow.append(prod['notes'])
+                        thisrow.append(notes1)
                         rows.append(thisrow)
 
                         for loc in avail['locations']:
+                            num_items = prod['qty_needed']*int(loc['qty'])
+                            total_items = total_items + num_items
+
+                            notes2 = 'Part of ' + prod['id']
+
                             info = get_product_info(loc['partNumber'])
                             avail = get_product_availability(loc['partNumber'])
                             for thisstore in avail:
                                 if thisstore['store_id'] == store:
                                     avail = thisstore
 
+                            if num_items > avail['available']:
+                                meets_qty_reqs = False
+                                notes2 = 'NOT ENOUGH QTY! ' + notes2
+
                             thisrow = []
                             thisrow.append(loc['partNumber'])
                             thisrow.append(info['description'])
                             thisrow.append(loc['location'])
-                            thisrow.append(prod['qty_needed']*int(loc['qty']))
+                            thisrow.append(num_items)
                             thisrow.append(avail['available'])
                             thisrow.append(avail['probability'])
                             thisrow.append(info['color'])
                             thisrow.append(info['size'])
                             thisrow.append(info['price'])
-                            thisrow.append('Part of ' + prod['id'])
+                            thisrow.append(notes2)
                             rows.append(thisrow)
 
-        save_file('out_' + str(store) + '.csv', rows)
-    print(colored('Done.', 'green'))
+        rows.insert(4, ['Total Items', total_items])
+        rows.insert(3, ['Meets Qty Reqs', meets_qty_reqs])
 
+        save_file('out_' + str(store_name) + '.csv', rows)
+    print(colored('\nDone.', 'green'))
+
+load_preferred_stores()
 products = load_parse_all_products()
 save_product_availability(products)
