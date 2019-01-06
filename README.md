@@ -27,7 +27,7 @@ A super convenient way to make a shopping list for IKEA. For specified IKEA arti
 
 * Find the article numbers of the items you would like to purchase. They can be recorded with or without the period separators (e.g. 202.813.82 and 20281382 are both valid). 
 
-⋅⋅⋅**However,** I recommend copying the item code from the product's URL, as it sometimes differs from the article number listed on the site. For example, the article number for the [STUVA wall shelf](https://www.ikea.com/us/en/catalog/products/S79276717/) is 792.767.17, but the URL specifies it as S79276717. Only the number from the URL (S79276717) works in the IKEA API.
+   **However,** I recommend copying the item code from the product's URL, as it sometimes differs from the article number listed on the site. For example, the article number for the [STUVA wall shelf](https://www.ikea.com/us/en/catalog/products/S79276717/) is 792.767.17, but the URL specifies it as S79276717. Only the number from the URL (S79276717) works in the IKEA API.
 
    ![url_article_number](images/url_article_number.png)
 
