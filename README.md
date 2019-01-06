@@ -35,7 +35,7 @@ A super convenient way to make a shopping list for IKEA. For specified IKEA arti
 
    ![in.csv](images/in_csv.png)
 
-   **Note:** I recommend editing the CSV file in a text editor (e.g. Notepad, TextEdit, or [Visual Studio Code](https://code.visualstudio.com/)) and not Microsoft Excel, as excel likes to play with formatting. You must include two commas on every line.
+   **Note:** I recommend editing the CSV file in a text editor (e.g. Notepad, TextEdit, or [Visual Studio Code](https://code.visualstudio.com/)) and not Microsoft Excel, as Excel likes to play with formatting. You must include two commas on every line.
 
 * Run the script: `python check_stock.py`. You'll see the status of the script, as well as any errors if they arise. When the script is finished, you'll have a CSV file for each store, saved as out_[store name].csv. This is what it looks like:
 
