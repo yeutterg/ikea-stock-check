@@ -122,12 +122,18 @@ def get_product_info(item_id):
         # pricing
         item_info['price'] = float(item['prices']['normal']['priceNormal']['@unformatted'])
 
-        # description
-        item_info['color'] = item['attributesItems']['attributeItem'][0]['value']
+        # description & color
+        try:
+            item_info['color'] = item['attributesItems']['attributeItem'][0]['value']
+        except:
+            item_info['color'] = ''
         item_info['description'] = item['name'] + ' ' + item['facts']
 
         # size
-        item_info['size'] = item['attributesItems']['attributeItem'][1]['value']
+        try:
+            item_info['size'] = item['attributesItems']['attributeItem'][1]['value']
+        except:
+            item_info['size'] = ''
 
         print('\nProduct', item_info['item_id'], item_info['description'])
 
@@ -418,7 +424,7 @@ def save_product_availability(products):
 
                         notes0 = prod['notes']
 
-                        if prod['qty_needed'] > avail['locations'][0]['qty']:
+                        if prod['qty_needed'] > avail['available']:
                             meets_qty_reqs = False
                             notes0 = 'NOT ENOUGH QTY! ' + prod['notes']
 
