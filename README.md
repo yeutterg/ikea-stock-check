@@ -21,7 +21,9 @@ A super convenient way to make a shopping list for IKEA. For specified IKEA arti
    ![Japan Store Codes](images/japan_store_codes.png)
 
 * Find your preferred store(s) and note their 3-digit codes. For example, the store in PA, South Philadelphia has the code 215.
-* Edit the file preferred_stores.json with your preferred stores, language code, and country code.
+* Edit the file preferred_stores.json with your preferred stores, language code, and country code. If you have just one preferred store, remove the comma but keep the brackets, e.g. [215]
+
+   ![Preferred Stores File](images/preferred_stores.png)
 
 ## Check Stock and Locations
 
